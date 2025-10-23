@@ -1,4 +1,3 @@
-// utils/gameGen.ts
 import type { Dot } from "../slices/gameSlice";
 import { nanoid } from "nanoid";
 import { mulberry32 } from "./seedGenerator";
@@ -45,42 +44,56 @@ export function checkWin(
   dots: Dot[],
   colorsCount: number,
   opts?: {
-    maxClusterR?: number;
-    maxOutliersPerColor?: number;
-    extraGap?: number;
+    dotR?: number;
+    maxOutlierShare?: number;
+    gap?: number;
+    percentileP?: number;
   }
-) {
-  const {
-    maxClusterR = 60,
-    maxOutliersPerColor = 1,
-    extraGap = 40,
-  } = opts ?? {};
+): boolean {
+  const dotR = opts?.dotR ?? 8;
+  const maxOutlierShare = opts?.maxOutlierShare ?? 0.08;
+  const gap = opts?.gap ?? 2 * dotR + 10;
+  const p = opts?.percentileP ?? 0.9;
 
   const groups: Dot[][] = Array.from({ length: colorsCount }, () => []);
   for (const d of dots) groups[d.c].push(d);
 
   const clusters = groups.map((g) => {
-    const cx = g.reduce((s, d) => s + d.x, 0) / g.length;
-    const cy = g.reduce((s, d) => s + d.y, 0) / g.length;
+    const n = g.length || 1;
+    const cx = g.reduce((s, d) => s + d.x, 0) / n;
+    const cy = g.reduce((s, d) => s + d.y, 0) / n;
+
     const dists = g.map((d) => Math.hypot(d.x - cx, d.y - cy));
-    const r90 = percentile(dists, 0.9);
-    const hardR = Math.min(maxClusterR, Math.max(r90, 0));
-    const outliers = dists.filter((d) => d > hardR).length;
-    return { cx, cy, r: Math.min(r90, maxClusterR), outliers, size: g.length };
+    const rP = percentile(dists, p);
+
+    const targetR = dotR * (Math.sqrt(n) + 1.2);
+    const maxClusterR = targetR * 1.15;
+
+    const outliers = dists.filter((d) => d > maxClusterR).length;
+    const allowedOutliers = Math.max(1, Math.floor(n * maxOutlierShare));
+
+    return {
+      cx,
+      cy,
+      rEff: Math.min(rP, maxClusterR),
+      outliers,
+      allowedOutliers,
+      size: n,
+    };
   });
 
   for (const c of clusters) {
-    const allowed = Math.max(maxOutliersPerColor, Math.floor(c.size * 0.1));
-    if (c.outliers > allowed) return false;
+    if (c.outliers > c.allowedOutliers) return false;
   }
 
   for (let i = 0; i < clusters.length; i++) {
     for (let j = i + 1; j < clusters.length; j++) {
-      const ci = clusters[i],
-        cj = clusters[j];
-      const dist = Math.hypot(ci.cx - cj.cx, ci.cy - cj.cy);
-      if (dist < ci.r + cj.r + extraGap) return false;
+      const a = clusters[i],
+        b = clusters[j];
+      const dist = Math.hypot(a.cx - b.cx, a.cy - b.cy);
+      if (dist < a.rEff + b.rEff + gap) return false;
     }
   }
+
   return true;
 }

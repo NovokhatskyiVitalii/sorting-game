@@ -7,19 +7,22 @@ type Props = { colors: string[]; speed: number };
 
 const R = 8;
 const MOUSE_R = 48;
-const FORCE = 0.2;
+const FORCE = 0.4;
 const FRICTION = 0.99;
-const MAX_SPEED = 3.2;
+const MAX_SPEED = 3.3;
 const WALL_RESTITUTION = 0.21;
 
 const PADDING = 2;
 const SEP_ITERS = 2;
 const SEP_FORCE = 0.6;
 
+const WIN_STABLE_MS = 22;
+
 export default function GameCanvas({ colors, speed }: Props) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const dprRef = useRef(1);
   const mouse = useRef({ x: 0, y: 0, down: false, moved: false });
+  const winSinceRef = useRef<number | null>(null);
 
   const { dots, startedAt, status, elapsed } = useAppSelector((s) => s.game);
   const { colorsCount } = useAppSelector((s) => s.settings);
@@ -45,88 +48,29 @@ export default function GameCanvas({ colors, speed }: Props) {
 
   useEffect(() => {
     const c = ref.current!;
-    const getPos = (clientX: number, clientY: number) => {
-      const rect = c.getBoundingClientRect();
-      mouse.current.x = clientX - rect.left;
-      mouse.current.y = clientY - rect.top;
-      mouse.current.moved = true;
-    };
+    const rect = () => c.getBoundingClientRect();
 
-    const onPointerDown = (e: PointerEvent) => {
-      c.setPointerCapture?.(e.pointerId);
-      getPos(e.clientX, e.clientY);
-      mouse.current.down = true;
-      e.preventDefault();
-    };
     const onPointerMove = (e: PointerEvent) => {
-      getPos(e.clientX, e.clientY);
-      if (mouse.current.down) e.preventDefault();
-    };
-    const onPointerEnd = (e: PointerEvent) => {
-      mouse.current.down = false;
-      c.releasePointerCapture?.(e.pointerId);
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length) {
-        const t = e.touches[0];
-        getPos(t.clientX, t.clientY);
-        mouse.current.down = true;
-        e.preventDefault();
-      }
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length) {
-        const t = e.touches[0];
-        getPos(t.clientX, t.clientY);
-        e.preventDefault();
-      }
-    };
-    const onTouchEnd = () => {
-      mouse.current.down = false;
-    };
-    const onMove = (e: MouseEvent) => {
-      const rect = c.getBoundingClientRect();
-      mouse.current.x = e.clientX - rect.left;
-      mouse.current.y = e.clientY - rect.top;
+      const r = rect();
+      mouse.current.x = e.clientX - r.left;
+      mouse.current.y = e.clientY - r.top;
       mouse.current.moved = true;
     };
-    const onDown = () => (mouse.current.down = true);
-    const onUp = () => (mouse.current.down = false);
+    const onPointerDown = () => (mouse.current.down = true);
+    const onPointerEnd = () => (mouse.current.down = false);
 
-    const passiveFalse: AddEventListenerOptions & EventListenerOptions = {
-      passive: false,
-    };
-
-    c.addEventListener("pointerdown", onPointerDown, passiveFalse);
-    c.addEventListener("pointermove", onPointerMove, passiveFalse);
-    c.addEventListener("pointerup", onPointerEnd);
-    c.addEventListener("pointercancel", onPointerEnd);
-    c.addEventListener("pointerleave", onPointerEnd);
-
-    c.addEventListener("touchstart", onTouchStart, passiveFalse);
-    c.addEventListener("touchmove", onTouchMove, passiveFalse);
-    c.addEventListener("touchend", onTouchEnd);
-
-    c.addEventListener("mousemove", onMove);
-    c.addEventListener("mousedown", onDown);
-    window.addEventListener("mouseup", onUp);
+    c.addEventListener("pointermove", onPointerMove, { passive: true });
+    c.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerEnd);
+    window.addEventListener("pointerleave", onPointerEnd);
 
     return () => {
-      // Pointer
-      c.removeEventListener("pointerdown", onPointerDown, passiveFalse);
-      c.removeEventListener("pointermove", onPointerMove, passiveFalse);
-      c.removeEventListener("pointerup", onPointerEnd);
-      c.removeEventListener("pointercancel", onPointerEnd);
-      c.removeEventListener("pointerleave", onPointerEnd);
-      // Touch
-      c.removeEventListener("touchstart", onTouchStart, passiveFalse);
-      c.removeEventListener("touchmove", onTouchMove, passiveFalse);
-      c.removeEventListener("touchend", onTouchEnd);
-      // Mouse
-      c.removeEventListener("mousemove", onMove);
-      c.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mouseup", onUp);
+      c.removeEventListener("pointermove", onPointerMove);
+      c.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerEnd);
+      window.removeEventListener("pointercancel", onPointerEnd);
+      window.removeEventListener("pointerleave", onPointerEnd);
     };
   }, []);
 
@@ -204,13 +148,11 @@ export default function GameCanvas({ colors, speed }: Props) {
                 dy = b.y - a.y;
               const dist = Math.hypot(dx, dy);
               const minDist = 2 * R + PADDING;
-
               if (dist > 0 && dist < minDist) {
                 const nx = dx / dist,
                   ny = dy / dist;
                 const overlap = minDist - dist;
                 const push = overlap * 0.5 * SEP_FORCE;
-
                 a.x -= nx * push;
                 a.y -= ny * push;
                 b.x += nx * push;
@@ -235,10 +177,24 @@ export default function GameCanvas({ colors, speed }: Props) {
           dispatch(setElapsed((performance.now() - startedAt) / 1000));
         }
 
-        if (checkWin(next, colorsCount)) {
-          const final = startedAt ? (performance.now() - startedAt) / 1000 : 0;
-          dispatch(setElapsed(final));
-          dispatch(win());
+        const ok = checkWin(next, colorsCount, {
+          dotR: R,
+        });
+
+        if (ok) {
+          if (winSinceRef.current == null) {
+            winSinceRef.current = performance.now();
+          }
+          const stableFor = performance.now() - winSinceRef.current;
+          if (stableFor >= WIN_STABLE_MS) {
+            const final = startedAt
+              ? (performance.now() - startedAt) / 1000
+              : 0;
+            dispatch(setElapsed(final));
+            dispatch(win());
+          }
+        } else {
+          winSinceRef.current = null;
         }
       }
 
@@ -281,7 +237,7 @@ export default function GameCanvas({ colors, speed }: Props) {
   return (
     <canvas
       ref={ref}
-      className="w-full h-[70vh] rounded-2xl bg-zinc-800 shadow-lg touch-none select-none"
+      className="w-full h-[70vh] rounded-2xl bg-zinc-800 shadow-lg"
     />
   );
 }
