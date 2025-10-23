@@ -3,7 +3,7 @@
 An interactive color-sorting game built with **React**, **TypeScript**, **Redux Toolkit**, and **Vite**.
 Your goal is simple — drag and group colorful dots by color as fast as you can!
 
-![Sorting Game Preview](https://github.com/NovokhatskyiVitali/sorting-game/public/preview-demo.jpg)
+![Sorting Game Preview](public/preview-demo.jpg)
 
 ---
 
@@ -59,27 +59,34 @@ npm run dev
 npm run build
 ```
 
-⚙️ Folder Structure
+## 🧩 Folder Structure
 
+```bash
 src/
-├── app/ # Main app components
-├── components/ # UI and game elements
-├── hooks/ # Custom hooks
-├── slices/ # Redux slices (state)
-├── utils/ # Game logic & helpers
-├── index.css # Tailwind styles
-└── main.tsx # App entry point
+├── app/            # Redux store & app-level setup
+│   └── store.ts
+├── components/     # UI and game elements
+├── hooks/          # Custom hooks
+├── slices/         # Redux slices (state)
+├── utils/          # Game logic & helpers
+├── index.css       # Tailwind styles
+└── main.tsx        # App entry point
+```
 
-🧠 Key Files
+## 🧠 Key Files
 
-| File               | Purpose                                           |
-| ------------------ | ------------------------------------------------- |
-| `gameGen.ts`       | Generates dot positions and checks win conditions |
-| `GameCanvas.tsx`   | Handles physics, drawing, and animation           |
-| `Menu.tsx`         | Game settings and controls                        |
-| `seedGenerator.ts` | Generates deterministic random seeds              |
+| File                 | Purpose                                           |
+| -------------------- | ------------------------------------------------- |
+| **gameGen.ts**       | Generates dot positions and checks win conditions |
+| **GameCanvas.tsx**   | Handles physics, drawing, and animation           |
+| **Menu.tsx**         | Game settings and controls                        |
+| **seedGenerator.ts** | Generates deterministic random seeds              |
 
-🪄 Author
+## 🌐 Demo
+
+🎮 **Live Demo:** [Play the Game](https://novokhatskyivitalii.github.io/sorting-game/)
+
+## 🪄 Author
 
 Vitalii Novokhatskyi
 Frontend Developer | React / TypeScript / Redux
