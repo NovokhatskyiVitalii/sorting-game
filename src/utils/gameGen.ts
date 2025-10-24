@@ -40,58 +40,81 @@ function percentile(arr: number[], p: number) {
   return a[idx];
 }
 
+function allowedOutliersForSize(size: number) {
+  if (size <= 10) return 0;
+  return Math.min(3, Math.floor(size * 0.06));
+}
+
 export function checkWin(
   dots: Dot[],
   colorsCount: number,
   opts?: {
+    maxClusterR?: number;
+    extraGap?: number;
+    minPairSumR?: number;
+    hardFarAllowance?: number;
+    minGroupSize?: number;
     dotR?: number;
-    maxOutlierShare?: number;
-    gap?: number;
-    percentileP?: number;
   }
 ): boolean {
-  const dotR = opts?.dotR ?? 8;
-  const maxOutlierShare = opts?.maxOutlierShare ?? 0.08;
-  const gap = opts?.gap ?? 2 * dotR + 10;
-  const p = opts?.percentileP ?? 0.9;
+  const {
+    maxClusterR = 80,
+    extraGap = 24,
+    minPairSumR = 36,
+    hardFarAllowance = 6,
+    minGroupSize = 4,
+  } = opts ?? {};
+
+  if (!dots.length || colorsCount <= 0) return false;
+
+  const perColor = dots.length / colorsCount;
+
+  const adaptiveR = perColor <= 6 ? 45 : perColor <= 12 ? 65 : maxClusterR;
+  const adaptiveMinGroup = Math.max(2, Math.min(minGroupSize, perColor));
+  const adaptiveGap = perColor <= 5 ? 18 : extraGap;
 
   const groups: Dot[][] = Array.from({ length: colorsCount }, () => []);
-  for (const d of dots) groups[d.c].push(d);
+  for (const d of dots) {
+    if (d.c >= 0 && d.c < colorsCount) groups[d.c].push(d);
+  }
+
+  for (const g of groups) {
+    if (!g || g.length < adaptiveMinGroup) return false;
+  }
 
   const clusters = groups.map((g) => {
-    const n = g.length || 1;
-    const cx = g.reduce((s, d) => s + d.x, 0) / n;
-    const cy = g.reduce((s, d) => s + d.y, 0) / n;
-
+    const size = g.length;
+    const cx = g.reduce((s, d) => s + d.x, 0) / size;
+    const cy = g.reduce((s, d) => s + d.y, 0) / size;
     const dists = g.map((d) => Math.hypot(d.x - cx, d.y - cy));
-    const rP = percentile(dists, p);
-
-    const targetR = dotR * (Math.sqrt(n) + 1.2);
-    const maxClusterR = targetR * 1.15;
-
-    const outliers = dists.filter((d) => d > maxClusterR).length;
-    const allowedOutliers = Math.max(1, Math.floor(n * maxOutlierShare));
-
-    return {
-      cx,
-      cy,
-      rEff: Math.min(rP, maxClusterR),
-      outliers,
-      allowedOutliers,
-      size: n,
-    };
+    const r90 = percentile(dists, 0.9);
+    const rEff = Math.min(r90, adaptiveR);
+    const maxD = Math.max(...dists);
+    const outliers = dists.filter((d) => d > adaptiveR).length;
+    return { cx, cy, rEff, outliers, size, maxD };
   });
 
   for (const c of clusters) {
-    if (c.outliers > c.allowedOutliers) return false;
+    const allowed = allowedOutliersForSize(c.size);
+    if (c.outliers > allowed) return false;
+    if (c.maxD > adaptiveR + hardFarAllowance) return false;
   }
+
+  const allXs = clusters.map((c) => c.cx);
+  const allYs = clusters.map((c) => c.cy);
+  const spanX = Math.max(...allXs) - Math.min(...allXs);
+  const spanY = Math.max(...allYs) - Math.min(...allYs);
+
+  if (Math.hypot(spanX, spanY) < adaptiveR * 2.0) return false;
 
   for (let i = 0; i < clusters.length; i++) {
     for (let j = i + 1; j < clusters.length; j++) {
       const a = clusters[i],
         b = clusters[j];
       const dist = Math.hypot(a.cx - b.cx, a.cy - b.cy);
-      if (dist < a.rEff + b.rEff + gap) return false;
+      const sumR =
+        Math.max(minPairSumR, a.rEff) + Math.max(minPairSumR, b.rEff);
+      if (dist < sumR + adaptiveGap) return false;
     }
   }
 
