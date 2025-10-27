@@ -32,7 +32,7 @@ Your goal is simple — drag and group colorful dots by color as fast as you can
 
 ## 💻 Tech Stack
 
-- **React 18**
+- **React 19**
 - **TypeScript**
 - **Redux Toolkit**
 - **Vite**
